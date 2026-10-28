@@ -52,6 +52,11 @@ class Value:
         return out
 
     def backward(self):
+        """Apply the chain rule; leaf gradients accumulate across fresh graphs.
+
+        Rebuild the forward graph for each training step. Calling backward twice
+        on the same graph also reuses intermediate gradients in this tiny engine.
+        """
 
         # topological order all of the children in the graph
         topo = []

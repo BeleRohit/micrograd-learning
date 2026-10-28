@@ -11,8 +11,13 @@ setuptools.setup(
     description="A tiny scalar-valued autograd engine with a small PyTorch-like neural network library on top.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/karpathy/micrograd",
+    url="https://github.com/BeleRohit/micrograd-learning",
     packages=setuptools.find_packages(),
+    extras_require={
+        "test": ["pytest>=7", "torch>=2"],
+        "demo": ["numpy>=1.23", "scikit-learn>=1.2", "matplotlib>=3.6",
+                 "jupyterlab>=4", "graphviz>=0.20"],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

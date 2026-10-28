@@ -1,73 +1,112 @@
+# micrograd — learning extensions
 
-# micrograd
+A personal learning extension of [Andrej Karpathy's micrograd](https://github.com/karpathy/micrograd): a tiny scalar autograd engine and neural network library in pure Python.
 
-![awww](puppy.jpg)
+I watched the [micrograd video](https://www.youtube.com/watch?v=VMj-3S1tku0) end to end and learned the underlying concepts: computation graphs, the chain rule, backpropagation, neurons, and training with gradient descent. This repository is my follow-up work, applying that understanding through small correctness fixes, tests, and reproducible experiments.
 
-A tiny Autograd engine (with a bite! :)). Implements backpropagation (reverse-mode autodiff) over a dynamically built DAG and a small neural networks library on top of it with a PyTorch-like API. Both are tiny, with about 100 and 50 lines of code respectively. The DAG only operates over scalar values, so e.g. we chop up each neuron into all of its individual tiny adds and multiplies. However, this is enough to build up entire deep neural nets doing binary classification, as the demo notebook shows. Potentially useful for educational purposes.
+The original engine and neural network implementation are Karpathy's work. The changes here build on that foundation as part of my learning process. This is a separate repository on my account; the upstream history and MIT attribution are preserved.
 
-### Installation
+## Improvements made
+
+| Area | Original behavior | Change in this repository |
+| --- | --- | --- |
+| Input dimensions | `zip` silently truncated mismatched inputs and weights. | Neurons raise a clear `ValueError` for too few or too many inputs. |
+| Narrow hidden layers | A one-neuron hidden layer returned a scalar that the next layer could not consume. | Hidden layers pass lists internally; single-output public calls still return a `Value`. |
+| Gradient coverage | Two expressions were compared against PyTorch. | Added tests for reused values, branching, ReLU at zero, gradient accumulation, and narrow networks. |
+| Learning walkthrough | Examples lived mainly in notebooks. | Added a walkthrough connecting an expression, its graph, gradients, and an SGD update. |
+| Reproducible training | The notebook seeded RNGs, but there was no standalone training command. | Added a seeded command-line demo, explicit dataset seeds, and installable dependency groups. |
+| Automated checks | Tests ran manually. | Added GitHub Actions checks on Python 3.10 and 3.13 for pushes and pull requests. |
+
+The goal is to keep the core small and readable while making its behavior easier to verify.
+
+## Setup
+
+Use Python 3.10 or newer for the development and notebook dependencies below. The scalar engine itself has no third-party runtime dependencies.
 
 ```bash
-pip install micrograd
+git clone https://github.com/BeleRohit/micrograd-learning.git
+cd micrograd-learning
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[test,demo]'
 ```
 
-### Example usage
+Install this checkout with `-e .` to use only the engine and neural network library. Installing `micrograd` directly from PyPI gives you the upstream package rather than these extensions.
 
-Below is a slightly contrived example showing a number of possible supported operations:
+## Quick example
 
 ```python
 from micrograd.engine import Value
 
-a = Value(-4.0)
-b = Value(2.0)
-c = a + b
-d = a * b + b**3
-c += c + 1
-c += 1 + c + (-a)
-d += d * 2 + (b + a).relu()
-d += 3 * d + (b - a).relu()
-e = c - d
-f = e**2
-g = f / 2.0
-g += 10.0 / f
-print(f'{g.data:.4f}') # prints 24.7041, the outcome of this forward pass
-g.backward()
-print(f'{a.grad:.4f}') # prints 138.8338, i.e. the numerical value of dg/da
-print(f'{b.grad:.4f}') # prints 645.5773, i.e. the numerical value of dg/db
+x = Value(3.0)
+y = x * x + 2 * x
+y.backward()
+
+print(y.data)  # 15.0
+print(x.grad)  # 8.0: dy/dx = 2*x + 2
 ```
 
-### Training a neural net
+For the calculation graph, an update step, and gradient accumulation behavior, see [the walkthrough](docs/walkthrough.md).
 
-The notebook `demo.ipynb` provides a full demo of training an 2-layer neural network (MLP) binary classifier. This is achieved by initializing a neural net from `micrograd.nn` module, implementing a simple svm "max-margin" binary classification loss and using SGD for optimization. As shown in the notebook, using a 2-layer neural net with two 16-node hidden layers we achieve the following decision boundary on the moon dataset:
-
-![2d neuron](moon_mlp.png)
-
-### Training a GPT
-
-For a more advanced example, see [microgpt](https://gist.github.com/karpathy/8627fe009c40f57531cb18360106ce95), which trains and samples from a full GPT-2-like transformer in pure, dependency-free Python. It builds on a more efficient and better version of the autograd engine here (storing local gradients at forward time instead of per-op backward closures), and is the complete algorithm in a single file — everything else is just efficiency. See also the accompanying [explainer post](https://karpathy.github.io/2026/02/12/microgpt/) for a detailed walkthrough.
-
-### Tracing / visualization
-
-For added convenience, the notebook `trace_graph.ipynb` produces graphviz visualizations. E.g. this one below is of a simple 2D neuron, arrived at by calling `draw_dot` on the code below, and it shows both the data (left number in each node) and the gradient (right number in each node).
-
-```python
-from micrograd import nn
-n = nn.Neuron(2)
-x = [Value(1.0), Value(-2.0)]
-y = n(x)
-dot = draw_dot(y)
-```
-
-![2d neuron](gout.svg)
-
-### Running tests
-
-To run the unit tests you will have to install [PyTorch](https://pytorch.org/), which the tests use as a reference for verifying the correctness of the calculated gradients. Then simply:
+## Train without Jupyter
 
 ```bash
-python -m pytest
+python train.py --seed 1337 --steps 100
 ```
 
-### License
+This trains the original `MLP(2, [16, 16, 1])` architecture on 100 noisy moons samples using hinge loss, L2 regularization, and SGD. The script prints the initial loss, progress, and final loss and accuracy after the last update. These are training-set metrics; they do not measure generalization.
 
-MIT
+The seed fixes the dataset and weight initialization. Repeat the same command in the same dependency environment to reproduce the experiment; different dependency versions or platforms can introduce numerical differences.
+
+### What I observed
+
+For the default seed and 100 steps, the local run started at a loss of `0.895844` and 50% training accuracy. After the final update, loss was `0.010978` and training accuracy was 100%. This shows that the small network can fit this dataset; a separate held-out set would be needed to assess generalization.
+
+The local test suite passed all 23 cases. The run used Python 3.13.7, PyTorch 2.9.0, NumPy 2.5.1, and scikit-learn 1.9.0. These versions record the experiment environment rather than lock dependencies for every platform.
+
+## Notebooks and visualization
+
+```bash
+jupyter lab
+```
+
+- `demo.ipynb`: train the moons classifier and plot its decision boundary. Run from the first cell to reset the seeds.
+- `trace_graph.ipynb`: draw computation graphs with values and gradients.
+
+The graph notebook also needs the Graphviz system executable. On macOS, install it with `brew install graphviz`; on Debian/Ubuntu, use `sudo apt-get install graphviz`. The Python `graphviz` package is included in the `demo` dependency group.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+Tests cover input errors, single-neuron hidden layers, public output shapes, parameter gradient clearing, shared operands, branching, and ReLU around zero. PyTorch provides reference outputs and gradients for the original expressions and the narrow-network regression tests.
+
+GitHub Actions runs the suite automatically on Python 3.10 and 3.13. PyTorch is a test dependency, not part of the engine.
+
+## Project layout
+
+```text
+micrograd/engine.py       Scalar Value objects and reverse-mode autodiff
+micrograd/nn.py           Neuron, Layer, MLP, and parameter helpers
+train.py                 Reproducible command-line training example
+demo.ipynb               Training and decision-boundary visualization
+trace_graph.ipynb        Graphviz computation-graph visualization
+test/                    Engine and neural network regression tests
+docs/walkthrough.md      Expression → graph → gradients → update
+.github/workflows/       Automated test configuration
+```
+
+## Scope and limitations
+
+Operations act on individual scalars. There are no tensors, GPU acceleration, or production training utilities. The recursive graph traversal can hit Python's recursion limit on very deep graphs.
+
+Call `model.zero_grad()` before backpropagation for each new training step, and rebuild the forward graph each time. Leaf gradients accumulate across fresh graphs. Repeating `backward()` on the same graph also reuses intermediate gradients, so it does not behave like PyTorch's retained-graph backpropagation. The walkthrough demonstrates this distinction.
+
+## Credits and license
+
+- Original project: [karpathy/micrograd](https://github.com/karpathy/micrograd).
+- Original author: Andrej Karpathy.
+- Learning extensions maintained by [BeleRohit](https://github.com/BeleRohit).
+- [MIT license](LICENSE), with the original copyright notice retained.

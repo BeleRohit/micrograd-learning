@@ -1,5 +1,57 @@
 import torch
+import pytest
 from micrograd.engine import Value
+
+
+def test_reused_value():
+    x = Value(3.0)
+    y = x * x
+    y.backward()
+    assert y.data == 9.0
+    assert x.grad == 6.0
+
+
+def test_shared_intermediate_receives_all_branch_gradients():
+    x = Value(2.0)
+    shared = x * x
+    y = shared * 3 + shared**2
+    y.backward()
+    assert y.data == 28.0
+    assert shared.grad == 11.0
+    assert x.grad == 44.0
+
+
+@pytest.mark.parametrize("value", [-2.0, 0.0, 2.0])
+def test_relu_matches_torch_at_and_around_zero(value):
+    x = Value(value)
+    y = x.relu()
+    y.backward()
+    reference = torch.tensor(value, dtype=torch.double, requires_grad=True)
+    result = reference.relu()
+    result.backward()
+    assert y.data == result.item()
+    assert x.grad == reference.grad.item()
+
+
+def test_leaf_gradients_accumulate_across_fresh_graphs():
+    x = Value(3.0)
+    (x * x).backward()
+    assert x.grad == 6.0
+    (x * x).backward()
+    assert x.grad == 12.0
+    x.grad = 0
+    (x * x).backward()
+    assert x.grad == 6.0
+
+
+def test_same_graph_reuses_intermediate_gradients():
+    # Document the original engine's limitation rather than imply PyTorch parity.
+    x = Value(3.0)
+    y = (x * x) * 2
+    y.backward()
+    assert x.grad == 12.0
+    y.backward()
+    assert x.grad == 36.0
 
 def test_sanity_check():
 
